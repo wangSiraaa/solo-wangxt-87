@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/quota}
+    username: ${DB_USER:quota}
+    password: ${DB_PASSWORD:quota}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: true
+  jackson:
+    generator:
+      write-bigdecimal-as-plain: true
+
+server:
+  port: 8080
+
+app:
+  disclaimer: 本系统使用虚构物种与许可规则，不连接任何监管系统，不作为真实捕捞许可。
