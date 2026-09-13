@@ -17,6 +17,7 @@ export default function App() {
   const [meta, setMeta] = useState(null)
   const [error, setError] = useState(null)
   const [focusVoyageId, setFocusVoyageId] = useState(null)
+  const [focusTransferId, setFocusTransferId] = useState(null)
 
   useEffect(() => {
     api.meta().then(setMeta).catch((e) => setError(e.message))
@@ -25,6 +26,11 @@ export default function App() {
   const openVoyage = (id) => {
     setFocusVoyageId(id)
     setTab('voyages')
+  }
+
+  const openTransfer = (id) => {
+    setFocusTransferId(id)
+    setTab('transfers')
   }
 
   return (
@@ -44,9 +50,9 @@ export default function App() {
       </header>
       {error && <div className="error">{error}</div>}
       <main>
-        {tab === 'accounts' && <AccountsPage onOpenVoyage={openVoyage} />}
+        {tab === 'accounts' && <AccountsPage onOpenVoyage={openVoyage} onOpenTransfer={openTransfer} />}
         {tab === 'voyages' && <VoyagesPage meta={meta} focusVoyageId={focusVoyageId} />}
-        {tab === 'transfers' && <TransfersPage />}
+        {tab === 'transfers' && <TransfersPage focusTransferId={focusTransferId} />}
         {tab === 'demo' && <DemoPage />}
       </main>
     </div>

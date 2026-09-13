@@ -11,7 +11,7 @@ const TYPE_LABEL = {
 }
 
 /** 余额账本：从余额一路追到航次与调拨记录 */
-export default function AccountsPage({ onOpenVoyage }) {
+export default function AccountsPage({ onOpenVoyage, onOpenTransfer }) {
   const [accounts, setAccounts] = useState([])
   const [ledger, setLedger] = useState(null)
   const [ledgerFor, setLedgerFor] = useState(null)
@@ -73,7 +73,9 @@ export default function AccountsPage({ onOpenVoyage }) {
                         航次 {e.refLabel}
                       </button>
                     ) : e.refType === 'TRANSFER' ? (
-                      <span>{e.refLabel}</span>
+                      <button className="link" onClick={() => onOpenTransfer(e.refId)}>
+                        {e.refLabel}
+                      </button>
                     ) : e.refType === 'LANDING' ? (
                       <span>卸货 {e.refLabel}</span>
                     ) : (

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { api } from '../api/client.js'
 
 /** 配额调拨：保存来源账户与生效期间，仅限同 物种/海区/季节 维度 */
-export default function TransfersPage() {
+export default function TransfersPage({ focusTransferId }) {
   const [transfers, setTransfers] = useState([])
   const [accounts, setAccounts] = useState([])
   const [error, setError] = useState(null)
@@ -15,6 +15,13 @@ export default function TransfersPage() {
     api.accounts().then(setAccounts).catch((e) => setError(e.message))
   }
   useEffect(() => { reload() }, [])
+
+  // 从余额账本跳转而来：定位并高亮对应调拨记录
+  useEffect(() => {
+    if (!focusTransferId) return
+    const row = document.getElementById(`transfer-${focusTransferId}`)
+    if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [focusTransferId, transfers])
 
   const accountLabel = (a) =>
     `#${a.accountId} ${a.vesselName} / ${a.speciesName} / ${a.areaName} / ${a.seasonName}（可用 ${a.available} kg）`
@@ -63,7 +70,8 @@ export default function TransfersPage() {
         </thead>
         <tbody>
           {transfers.map((t) => (
-            <tr key={t.id}>
+            <tr key={t.id} id={`transfer-${t.id}`}
+                className={t.id === focusTransferId ? 'selected' : ''}>
               <td>调拨#{t.id}</td>
               <td>{accountBrief(t.fromAccountId)}</td>
               <td>{accountBrief(t.toAccountId)}</td>
