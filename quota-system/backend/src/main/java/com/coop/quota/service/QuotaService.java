@@ -112,23 +112,54 @@ public class QuotaService {
     }
 
     private BalanceView toBalanceView(QuotaAccount a) {
+        return computeBalance(a, entryRepo.findByAccountIdOrderByCreatedAtAscIdAsc(a.getId()));
+    }
+
+    /** 从条目列表汇总余额视图：可用余额 = 配额 - 占用 - 实捕 + 结转净额 = 全部条目之和 */
+    private BalanceView computeBalance(QuotaAccount a, List<LedgerEntry> entries) {
         Map<LedgerType, BigDecimal> sums = new EnumMap<>(LedgerType.class);
-        for (Object[] row : entryRepo.sumByAccountIdGroupByType(a.getId())) {
-            sums.put((LedgerType) row[0], (BigDecimal) row[1]);
+        for (LedgerEntry e : entries) {
+            sums.merge(e.getType(), e.getAmount(), BigDecimal::add);
         }
         BigDecimal quota = sums.getOrDefault(LedgerType.ALLOCATION, BigDecimal.ZERO)
                 .add(sums.getOrDefault(LedgerType.TRANSFER_IN, BigDecimal.ZERO))
                 .add(sums.getOrDefault(LedgerType.TRANSFER_OUT, BigDecimal.ZERO));
         BigDecimal reserved = sums.getOrDefault(LedgerType.RESERVATION, BigDecimal.ZERO)
                 .add(sums.getOrDefault(LedgerType.RESERVATION_RELEASE, BigDecimal.ZERO)).negate();
-        BigDecimal actual = sums.getOrDefault(LedgerType.ACTUAL_DEDUCTION, BigDecimal.ZERO).negate();
-        BigDecimal available = quota.subtract(reserved).subtract(actual);
+        BigDecimal actual = sums.getOrDefault(LedgerType.ACTUAL_DEDUCTION, BigDecimal.ZERO)
+                .add(sums.getOrDefault(LedgerType.CATCH_ADJUSTMENT, BigDecimal.ZERO)).negate();
+        BigDecimal carryoverNet = sums.getOrDefault(LedgerType.CARRYOVER_IN, BigDecimal.ZERO)
+                .add(sums.getOrDefault(LedgerType.CARRYOVER_OUT, BigDecimal.ZERO));
+        BigDecimal available = quota.subtract(reserved).subtract(actual).add(carryoverNet);
         return new BalanceView(a.getId(),
                 a.getSpecies().getCode(), a.getSpecies().getName(),
                 a.getSeaArea().getCode(), a.getSeaArea().getName(),
                 a.getSeason().getCode(), a.getSeason().getName(),
                 a.getVessel().getCode(), a.getVessel().getName(),
-                quota, reserved, actual, available);
+                quota, reserved, actual, carryoverNet, available);
+    }
+
+    /**
+     * 回放：按当时分类复现任一季节账户的账面。
+     * upToEntryId 优先（精确到条目），否则按时间截断；都为空等同当前余额。
+     */
+    @Transactional(readOnly = true)
+    public com.coop.quota.dto.ReplayView replay(Long accountId, java.time.Instant at, Long upToEntryId) {
+        QuotaAccount a = accountRepo.findById(accountId)
+                .orElseThrow(() -> new BusinessException("账户不存在: " + accountId));
+        List<LedgerEntry> entries;
+        if (upToEntryId != null) {
+            entries = entryRepo.findByAccountIdAndIdLessThanEqualOrderByIdAsc(accountId, upToEntryId);
+        } else if (at != null) {
+            entries = entryRepo.findByAccountIdAndCreatedAtLessThanEqualOrderByIdAsc(accountId, at);
+        } else {
+            entries = entryRepo.findByAccountIdOrderByCreatedAtAscIdAsc(accountId);
+        }
+        List<LedgerEntryView> views = new ArrayList<>();
+        for (LedgerEntry e : entries) {
+            views.add(LedgerEntryView.of(e, refLabel(e)));
+        }
+        return new com.coop.quota.dto.ReplayView(computeBalance(a, entries), views);
     }
 
     /** 账户账本明细：从余额追溯到具体航次/卸货/调拨单据。 */
@@ -149,6 +180,8 @@ public class QuotaService {
                     .map(l -> l.getReceiptNo() + "@" + l.getPortName())
                     .orElse("卸货#" + e.getRefId());
             case TRANSFER -> "调拨#" + e.getRefId();
+            case REVISION -> "修订#" + e.getRefId();
+            case CARRYOVER -> "结转#" + e.getRefId();
             case ALLOCATION -> "核拨批次#" + e.getRefId();
         };
     }

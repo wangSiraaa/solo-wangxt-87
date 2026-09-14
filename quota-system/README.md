@@ -25,6 +25,11 @@
 | 物种/海区/季节不匹配不得顶替 | 账户按四元组唯一定位；申报/核销只触达精确匹配账户；调拨强制同维度 |
 | 调拨保存来源及生效期间 | `quota_transfer` 持久化 from/to 账户与 effectiveFrom~effectiveTo，过账写一出一进两条条目，期间外拒绝 |
 | 待确认称重不计入最终捕捞量 | PENDING 卸货单不产生任何账本条目；存在 PENDING 时禁止结案 |
+| 混合渔获分类修订 | 核实/修订按 `landing_component` 拆分物种；修订只重分配扣减（`CATCH_ADJUSTMENT`），合计恒等于批次核实重量，不能凭修订增加可捕总量；原季节结束仍可修订 |
+| 修订被推翻 | 仅可推翻当前生效的最后一笔；全额冲回调整、分类回退，账本保留修订与冲回全部条目 |
+| 转出后不足 | 账户为负时生成 `shortfall` 待处理缺口，绝不自动撤销他人合法航次 |
+| 欠额跨季结转 | `carryover` 单独记录承接关系与上限；金额 ≤ 欠额且 ≤ 上限，旧季负余额不清零 |
+| 按当时分类回放 | `GET /api/accounts/{id}/replay?at=…&upToEntry=…` 复现任一时点账面；当前余额经账本明细追到每次调整 |
 | 同一凭证多次回传不重复扣减 | `landing.receipt_no` 全局唯一 + 建单/核实双重幂等（同凭证同重量重复核实直接返回） |
 | 删除草稿不丢捕捞事实 | 仅 DRAFT 可删（草稿从未落账本）；已申报航次禁止删除；已核实卸货与实扣条目永久保留 |
 | 从余额追到航次和调拨 | `GET /api/accounts/{id}/ledger` 返回带单据类型/编号的明细，前端可点击跳转航次 |
@@ -54,14 +59,20 @@ cd frontend && npm install && npm run dev   # 前端 :5173（代理 /api）
 
 ```
 GET    /api/meta                        基础数据 + 免责声明
-GET    /api/accounts                    全部账户余额视图（配额/占用/实捕/可用）
-GET    /api/accounts/{id}/ledger        账本明细（追溯到航次/卸货/调拨）
+GET    /api/accounts                    全部账户余额视图（配额/占用/实捕/结转净额/可用）
+GET    /api/accounts/{id}/ledger        账本明细（追溯到航次/卸货/调拨/修订/结转）
+GET    /api/accounts/{id}/replay        按当时分类回放（at=时刻 或 upToEntry=条目号）
 POST   /api/voyages                     建草稿
 POST   /api/voyages/{id}/declare        申报（占用预计额度，争用时余额不足即拒）
 POST   /api/voyages/{id}/landings       登记卸货（按 receiptNo 幂等）
-POST   /api/voyages/landings/{id}/verify  核实（转实扣/释放差额，重复回传幂等）
+POST   /api/voyages/landings/{id}/verify  核实（可带混合分类 components；转实扣/释放差额，幂等）
 POST   /api/voyages/{id}/close|cancel   结案 / 取消
 DELETE /api/voyages/{id}                删除草稿（仅限 DRAFT）
+GET    /api/landings/{id}/components    批次当前生效分类
+POST   /api/landings/{id}/revisions     分类修订（合计必须等于批次核实重量）
+POST   /api/revisions/{id}/overturn     推翻修订（全额冲回）
+GET    /api/shortfalls                  待处理缺口列表
+POST   /api/carryovers                  跨季欠额结转（部分承接、记录上限、旧季不清零）
 POST   /api/transfers                   调拨（同维度 + 生效期间校验，来源留痕）
 POST   /api/demo/run                    运行样例场景
 ```

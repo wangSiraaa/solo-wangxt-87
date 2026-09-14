@@ -27,3 +27,7 @@ tr.selected { background: #eff6ff; }
 .actions { display: flex; gap: 6px; align-items: center; }
 .log { background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px 16px 16px 36px; }
 .log li { margin: 6px 0; font-size: 14px; }
+.tag { display: inline-block; background: #e0e7ff; color: #3730a3; border-radius: 4px; padding: 2px 8px; margin: 0 4px; font-size: 13px; }
+.deficit { background: #fef2f2; }
+.landing-detail { background: #f8fafc; border-radius: 6px; padding: 10px 12px; }
+.landing-detail .bar { margin: 8px 0; }

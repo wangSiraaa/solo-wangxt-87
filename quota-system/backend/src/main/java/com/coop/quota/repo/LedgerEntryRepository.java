@@ -15,16 +15,17 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
 
     List<LedgerEntry> findByAccountIdOrderByCreatedAtAscIdAsc(Long accountId);
 
+    /** 回放：截至某时刻的条目 */
+    List<LedgerEntry> findByAccountIdAndCreatedAtLessThanEqualOrderByIdAsc(Long accountId, java.time.Instant at);
+
+    /** 回放：截至某条目（含）为止，用于精确复现某次调整前的账面 */
+    List<LedgerEntry> findByAccountIdAndIdLessThanEqualOrderByIdAsc(Long accountId, Long id);
+
     List<LedgerEntry> findByRefTypeAndRefId(RefType refType, Long refId);
 
     /** 账户全部条目带符号求和 = 可用余额 */
     @Query("select coalesce(sum(e.amount), 0) from LedgerEntry e where e.account.id = :accountId")
     BigDecimal sumByAccountId(@Param("accountId") Long accountId);
-
-    /** 按类型分组汇总，用于余额视图（配额/占用/实捕分列） */
-    @Query("select e.type, coalesce(sum(e.amount), 0) from LedgerEntry e " +
-            "where e.account.id = :accountId group by e.type")
-    List<Object[]> sumByAccountIdGroupByType(@Param("accountId") Long accountId);
 
     /** 某单据（如航次）在指定类型上的合计 */
     @Query("select coalesce(sum(e.amount), 0) from LedgerEntry e " +

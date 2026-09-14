@@ -32,5 +32,17 @@ export const api = {
   closeVoyage: (id) => request(`/voyages/${id}/close`, { method: 'POST' }),
   cancelVoyage: (id) => request(`/voyages/${id}/cancel`, { method: 'POST' }),
   deleteVoyage: (id) => request(`/voyages/${id}`, { method: 'DELETE' }),
-  runDemo: () => request('/demo/run', { method: 'POST' })
+  runDemo: () => request('/demo/run', { method: 'POST' }),
+  // 分类修订
+  landingComponents: (id) => request(`/landings/${id}/components`),
+  landingRevisions: (id) => request(`/landings/${id}/revisions`),
+  applyRevision: (id, payload) =>
+    request(`/landings/${id}/revisions`, { method: 'POST', body: JSON.stringify(payload) }),
+  overturnRevision: (id) => request(`/revisions/${id}/overturn`, { method: 'POST' }),
+  // 缺口与结转
+  shortfalls: () => request('/shortfalls'),
+  carryovers: () => request('/carryovers'),
+  carryover: (payload) => request('/carryovers', { method: 'POST', body: JSON.stringify(payload) }),
+  // 回放
+  replay: (id, at) => request(`/accounts/${id}/replay${at ? `?at=${encodeURIComponent(at)}` : ''}`)
 }

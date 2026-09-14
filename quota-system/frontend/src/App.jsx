@@ -3,12 +3,14 @@ import { api } from './api/client.js'
 import AccountsPage from './pages/AccountsPage.jsx'
 import VoyagesPage from './pages/VoyagesPage.jsx'
 import TransfersPage from './pages/TransfersPage.jsx'
+import ShortfallsPage from './pages/ShortfallsPage.jsx'
 import DemoPage from './pages/DemoPage.jsx'
 
 const TABS = [
   ['accounts', '余额账本'],
   ['voyages', '航次与卸货'],
   ['transfers', '配额调拨'],
+  ['shortfalls', '缺口与结转'],
   ['demo', '样例验证']
 ]
 
@@ -53,6 +55,7 @@ export default function App() {
         {tab === 'accounts' && <AccountsPage onOpenVoyage={openVoyage} onOpenTransfer={openTransfer} />}
         {tab === 'voyages' && <VoyagesPage meta={meta} focusVoyageId={focusVoyageId} />}
         {tab === 'transfers' && <TransfersPage focusTransferId={focusTransferId} />}
+        {tab === 'shortfalls' && <ShortfallsPage />}
         {tab === 'demo' && <DemoPage />}
       </main>
     </div>

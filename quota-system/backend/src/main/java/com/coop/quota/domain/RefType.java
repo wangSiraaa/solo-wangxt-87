@@ -7,5 +7,9 @@ public enum RefType {
     ALLOCATION,
     TRANSFER,
     VOYAGE,
-    LANDING
+    LANDING,
+    /** 分类修订单 */
+    REVISION,
+    /** 跨季欠额结转单 */
+    CARRYOVER
 }

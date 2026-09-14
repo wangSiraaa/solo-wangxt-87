@@ -18,5 +18,11 @@ public enum LedgerType {
     /** 核实/结案后释放占用（正） */
     RESERVATION_RELEASE,
     /** 靠港核实后的实扣（负） */
-    ACTUAL_DEDUCTION
+    ACTUAL_DEDUCTION,
+    /** 分类修订引起的扣减调整（带符号：负=补扣，正=退回） */
+    CATCH_ADJUSTMENT,
+    /** 欠额跨季结转：旧季账户赤字转出（正，仅转部分，不清零） */
+    CARRYOVER_OUT,
+    /** 欠额跨季结转：新季账户承接（负） */
+    CARRYOVER_IN
 }

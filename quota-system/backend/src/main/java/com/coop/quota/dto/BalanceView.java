@@ -13,8 +13,10 @@ public record BalanceView(
         BigDecimal quota,
         /** 在途占用（航次已申报未核实/未结案部分） */
         BigDecimal reserved,
-        /** 实捕核销（仅已核实称重） */
+        /** 实捕核销（已核实称重 ± 分类修订调整） */
         BigDecimal actual,
-        /** 可用余额 = quota - reserved - actual = 全部条目之和 */
+        /** 跨季结转净额（承接为负、转出为正） */
+        BigDecimal carryoverNet,
+        /** 可用余额 = quota - reserved - actual + carryoverNet = 全部条目之和 */
         BigDecimal available
 ) {}

@@ -59,6 +59,17 @@ public class QuotaController {
         return quotaService.ledgerOf(id);
     }
 
+    /** 回放：按当时分类复现账面（at=时刻 或 upToEntry=条目号，精确到某次调整前） */
+    @GetMapping("/accounts/{id}/replay")
+    public com.coop.quota.dto.ReplayView replay(
+            @PathVariable Long id,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(
+                    iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME)
+            java.time.Instant at,
+            @RequestParam(required = false) Long upToEntry) {
+        return quotaService.replay(id, at, upToEntry);
+    }
+
     @GetMapping("/transfers")
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public List<com.coop.quota.dto.TransferView> transfers() {

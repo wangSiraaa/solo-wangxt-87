@@ -8,7 +8,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 航次与卸货服务。
@@ -26,11 +28,13 @@ public class VoyageService {
     private final SpeciesRepository speciesRepo;
     private final SeaAreaRepository areaRepo;
     private final SeasonRepository seasonRepo;
+    private final LandingComponentRepository componentRepo;
 
     public VoyageService(VoyageRepository voyageRepo, LandingRepository landingRepo,
                          QuotaAccountRepository accountRepo, LedgerEntryRepository entryRepo,
                          VesselRepository vesselRepo, SpeciesRepository speciesRepo,
-                         SeaAreaRepository areaRepo, SeasonRepository seasonRepo) {
+                         SeaAreaRepository areaRepo, SeasonRepository seasonRepo,
+                         LandingComponentRepository componentRepo) {
         this.voyageRepo = voyageRepo;
         this.landingRepo = landingRepo;
         this.accountRepo = accountRepo;
@@ -39,6 +43,7 @@ public class VoyageService {
         this.speciesRepo = speciesRepo;
         this.areaRepo = areaRepo;
         this.seasonRepo = seasonRepo;
+        this.componentRepo = componentRepo;
     }
 
     /** 建草稿：不占用任何额度。 */
@@ -113,6 +118,17 @@ public class VoyageService {
      */
     @Transactional
     public Landing verifyLanding(Long landingId, BigDecimal verifiedWeight) {
+        return verifyLanding(landingId, verifiedWeight, null);
+    }
+
+    /**
+     * 核实卸货（混合渔获）：components 为靠港时按估计比例拆出的物种分类，
+     * 合计必须等于核实重量；为空则全部计入航次物种。每个物种的扣减落入其
+     * 精确匹配的 (物种,海区,季节,船舶) 账户，并保存初始分类行供后续修订对比。
+     */
+    @Transactional
+    public Landing verifyLanding(Long landingId, BigDecimal verifiedWeight,
+                                 List<com.coop.quota.dto.ComponentInput> components) {
         QuotaService.requirePositive(verifiedWeight);
         Landing l = landingRepo.findById(landingId)
                 .orElseThrow(() -> new BusinessException("卸货单不存在: " + landingId));
@@ -127,25 +143,65 @@ public class VoyageService {
         if (v.getStatus() != VoyageStatus.DECLARED) {
             throw new BusinessException("航次状态不允许核实卸货: " + v.getStatus());
         }
-        QuotaAccount account = accountOf(v);
+        if (components == null || components.isEmpty()) {
+            components = List.of(new com.coop.quota.dto.ComponentInput(
+                    v.getSpecies().getCode(), verifiedWeight));
+        }
+        // 校验分类并汇总各物种扣减
+        Map<QuotaAccount, BigDecimal> deductions = new LinkedHashMap<>();
+        Map<QuotaAccount, Species> accountSpecies = new LinkedHashMap<>();
+        BigDecimal total = BigDecimal.ZERO;
+        for (com.coop.quota.dto.ComponentInput c : components) {
+            QuotaService.requirePositive(c.weight());
+            Species species = speciesRepo.findByCode(c.speciesCode())
+                    .orElseThrow(() -> new BusinessException("物种不存在: " + c.speciesCode()));
+            QuotaAccount acc = accountRepo.findBySpeciesIdAndSeaAreaIdAndSeasonIdAndVesselId(
+                    species.getId(), v.getSeaArea().getId(), v.getSeason().getId(), v.getVessel().getId())
+                    .orElseThrow(() -> new BusinessException("物种 " + c.speciesCode()
+                            + " 在该海区/季节/船舶下没有配额账户，额度不得跨维度顶替"));
+            deductions.merge(acc, c.weight(), BigDecimal::add);
+            accountSpecies.putIfAbsent(acc, species);
+            total = total.add(c.weight());
+        }
+        if (total.compareTo(verifiedWeight) != 0) {
+            throw new BusinessException("分类重量合计 " + total + " kg 必须等于核实重量 "
+                    + verifiedWeight + " kg");
+        }
 
-        // 释放本票预计占用（不超过该航次剩余占用），再按实重扣减
+        QuotaAccount voyageAccount = accountOf(v);
         BigDecimal remainingReserved = remainingReservation(v.getId());
         BigDecimal release = l.getEstimatedWeight().min(remainingReserved);
-        BigDecimal availableAfter = entryRepo.sumByAccountId(account.getId())
-                .add(release).subtract(verifiedWeight);
-        if (availableAfter.signum() < 0) {
-            throw new BusinessException("实捕超出占用且余额不足：实扣 " + verifiedWeight
+
+        // 逐账户校验：航次账户有释放兜底，其余物种账户须自有足够余额
+        BigDecimal voyageDeduction = deductions.getOrDefault(voyageAccount, BigDecimal.ZERO);
+        if (entryRepo.sumByAccountId(voyageAccount.getId())
+                .add(release).subtract(voyageDeduction).signum() < 0) {
+            throw new BusinessException("实捕超出占用且余额不足：航次物种账户实扣 " + voyageDeduction
                     + " kg，释放占用 " + release + " kg 后仍超支");
         }
+        for (var e : deductions.entrySet()) {
+            if (e.getKey().equals(voyageAccount)) continue;
+            if (entryRepo.sumByAccountId(e.getKey().getId()).compareTo(e.getValue()) < 0) {
+                throw new BusinessException("物种 " + accountSpecies.get(e.getKey()).getCode()
+                        + " 账户余额不足，无法实扣 " + e.getValue() + " kg");
+            }
+        }
+
         if (release.signum() > 0) {
-            entryRepo.save(new LedgerEntry(account, LedgerType.RESERVATION_RELEASE, release,
+            entryRepo.save(new LedgerEntry(voyageAccount, LedgerType.RESERVATION_RELEASE, release,
                     RefType.LANDING, l.getId(),
                     "凭证 " + l.getReceiptNo() + " 核实，释放预计占用"));
         }
-        entryRepo.save(new LedgerEntry(account, LedgerType.ACTUAL_DEDUCTION, verifiedWeight.negate(),
-                RefType.LANDING, l.getId(),
-                "凭证 " + l.getReceiptNo() + " 于 " + l.getPortName() + " 核实实扣"));
+        for (var e : deductions.entrySet()) {
+            entryRepo.save(new LedgerEntry(e.getKey(), LedgerType.ACTUAL_DEDUCTION,
+                    e.getValue().negate(), RefType.LANDING, l.getId(),
+                    "凭证 " + l.getReceiptNo() + " 于 " + l.getPortName() + " 核实实扣（"
+                            + accountSpecies.get(e.getKey()).getCode() + "）"));
+        }
+        for (com.coop.quota.dto.ComponentInput c : components) {
+            Species species = speciesRepo.findByCode(c.speciesCode()).orElseThrow();
+            componentRepo.save(new LandingComponent(l, species, c.weight(), null));
+        }
         l.markVerified(verifiedWeight);
         return landingRepo.save(l);
     }
